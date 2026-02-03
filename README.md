@@ -104,16 +104,20 @@ Analyzes token distribution for concentration risk:
 
 ## Usage
 
-### Basic Scan
+### Quick Start (Interactive)
+
 ```bash
-npm run dev 0x1234...abcd
+npm install
+npm run dev
+# Enter contract address when prompted
+# Select chain from menu (Ethereum/Base/BSC)
 ```
 
-### Specify Chain
+### Command Line Usage
 ```bash
+npm run dev 0x1234...abcd --chain ethereum
 npm run dev 0x1234...abcd --chain base
 npm run dev 0x1234...abcd --chain bsc
-npm run dev 0x1234...abcd --chain polygon
 ```
 
 ### Build & Run
@@ -126,17 +130,17 @@ npm start 0x1234...abcd --chain ethereum
 
 ## Supported Chains
 
-| Chain | Key | Chain ID |
-|-------|-----|----------|
-| Ethereum | `ethereum` | 1 |
-| Base | `base` | 8453 |
-| BSC | `bsc` | 56 |
-| Polygon | `polygon` | 137 |
-| Arbitrum | `arbitrum` | 42161 |
-| Optimism | `optimism` | 10 |
-| Avalanche | `avalanche` | 43114 |
-| Fantom | `fantom` | 250 |
-| Blast | `blast` | 81457 |
+| Chain | Key | Chain ID | Status |
+|-------|-----|----------|---------|
+| Ethereum | `ethereum` | 1 | ✅ Available |
+| Base | `base` | 8453 | ✅ Available |
+| BSC | `bsc` | 56 | ✅ Available |
+| Polygon | `polygon` | 137 | 🔄 Coming Soon |
+| Arbitrum | `arbitrum` | 42161 | 🔄 Coming Soon |
+| Optimism | `optimism` | 10 | 🔄 Coming Soon |
+| Avalanche | `avalanche` | 43114 | 🔄 Coming Soon |
+| Fantom | `fantom` | 250 | 🔄 Coming Soon |
+| Blast | `blast` | 81457 | 🔄 Coming Soon |
 
 ---
 
@@ -148,6 +152,7 @@ Set custom RPC endpoints via environment variables:
 export ETH_RPC=https://your-eth-rpc.com
 export BASE_RPC=https://your-base-rpc.com
 export BSC_RPC=https://your-bsc-rpc.com
+# Additional chains coming soon...
 ```
 
 ---
