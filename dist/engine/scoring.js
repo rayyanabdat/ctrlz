@@ -1,21 +1,3 @@
-// ============================================================
-// SCORING SYSTEM - LOCKED IMPLEMENTATION
-// ============================================================
-// Base score = 70
-// LOW risk → no effect
-// MEDIUM risk → -5 each
-// HIGH risk → -15 each
-// UNKNOWN / UNVERIFIABLE → -3 each
-// Positive evidence (max +15 total):
-//   Owner is zero/dead → +5
-//   No proxy + no mint + no pause → +5
-//   Sufficient liquidity depth (> $50k) → +5
-// GUARDRAILS:
-//   If any HIGH risk exists → final score ≤65
-//   If ≥2 MEDIUM risks exist → final score ≤75
-//   V3/V4 unverifiable LP → final score ≤90
-//   Score must NEVER increase due to LOW risk
-// ============================================================
 const BASE_SCORE = 70;
 function countRiskPenalty(risk) {
     switch (risk) {
@@ -53,9 +35,6 @@ export function calculateFinalScore(input) {
     const positiveSignals = [];
     let score = BASE_SCORE;
     adjustments.push({ reason: "Base score", delta: BASE_SCORE });
-    // ============================================================
-    // RISK PENALTIES
-    // ============================================================
     // Logic risk
     const logicPenalty = countRiskPenalty(input.logicRisk);
     if (logicPenalty !== 0) {
@@ -114,9 +93,6 @@ export function calculateFinalScore(input) {
         if (isUnknown(input.holderRisk))
             riskFactors.push("Holder distribution could not be fully verified");
     }
-    // ============================================================
-    // POSITIVE EVIDENCE BONUSES (max +15 total)
-    // ============================================================
     let positiveBonus = 0;
     // +5: Owner is zero/dead
     if (input.contextFlags.ownershipRenounced) {
@@ -148,9 +124,6 @@ export function calculateFinalScore(input) {
             positiveSignals.push(`Liquidity depth: $${input.contextFlags.liquidityDepthUsd.toLocaleString()}`);
         }
     }
-    // ============================================================
-    // GUARDRAILS (HARD CAPS)
-    // ============================================================
     // Count HIGH and MEDIUM risks
     const allRisks = [
         input.logicRisk,
@@ -194,9 +167,6 @@ export function calculateFinalScore(input) {
     }
     // Clamp final score
     score = Math.max(0, Math.min(100, Math.round(score)));
-    // ============================================================
-    // CONFIDENCE & COVERAGE
-    // ============================================================
     const unknownCount = allRisks.filter(isUnknown).length +
         (input.liquidityRisk.verifiabilityRisk === "UNVERIFIABLE" ? 1 : 0);
     let confidence;

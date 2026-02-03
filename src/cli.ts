@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 import { scanEvmContract } from "./engine/evm.js";
 import { getSupportedChains } from "./config/chains.js";
 import chalk from "chalk";
