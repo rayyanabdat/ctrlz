@@ -23,7 +23,11 @@ async function main() {
     const args = process.argv.slice(2);
     // Show help
     if (args.includes("--help") || args.includes("-h")) {
-        console.log("Usage: ctrlz-cli [contractAddress] [--chain <chainKey>] [chainKey]");
+        console.log("Usage: ctrlz-cli [contractAddress] [--chain <chainKey>]");
+        console.log("");
+        console.log("Modes:");
+        console.log("  Interactive    Run without arguments to enter interactive mode");
+        console.log("  One-shot       Provide contract address for immediate scan");
         console.log("");
         console.log("Arguments:");
         console.log("  <contractAddress>  EVM contract address (0x...)");
@@ -33,12 +37,12 @@ async function main() {
         console.log(`                     Supported: ${getSupportedChains().join(", ")}`);
         console.log("");
         console.log("Examples:");
-        console.log("  ctrlz-cli 0x1234... ");
-        console.log("  ctrlz-cli 0x1234... --chain base");
-        console.log("  ctrlz-cli 0x1234... base");
+        console.log("  ctrlz-cli                          # Interactive mode");
+        console.log("  ctrlz-cli 0x1234...                # One-shot scan");
+        console.log("  ctrlz-cli 0x1234... --chain base   # One-shot with chain");
         process.exit(0);
     }
-    // Parse CLI arguments first
+    // Parse CLI arguments
     let contractAddress = null;
     let rawChain = null;
     for (let i = 0; i < args.length; i++) {
@@ -46,7 +50,7 @@ async function main() {
         // Handle --chain flag
         if (arg === "--chain" && i + 1 < args.length) {
             rawChain = args[i + 1];
-            i++; // Skip next arg
+            i++;
             continue;
         }
         // Skip flags
@@ -64,11 +68,38 @@ async function main() {
             continue;
         }
     }
-    // Validate required arguments
+    // Interactive mode: no contract address provided
     if (!contractAddress) {
-        console.error(chalk.red("Error: Contract address is required"));
-        console.error(chalk.gray("Usage: ctrlz-cli <contract-address> [--chain <chainKey>]"));
-        process.exit(1);
+        const { default: inquirer } = await import("inquirer");
+        const addressAnswer = await inquirer.prompt([
+            {
+                type: "input",
+                name: "address",
+                message: "Enter contract address:",
+                validate: (input) => {
+                    if (!input || !input.startsWith("0x")) {
+                        return "Please enter a valid contract address starting with 0x";
+                    }
+                    return true;
+                }
+            }
+        ]);
+        contractAddress = addressAnswer.address;
+        if (!rawChain) {
+            const chainAnswer = await inquirer.prompt([
+                {
+                    type: "list",
+                    name: "chain",
+                    message: "Select blockchain:",
+                    choices: [
+                        { name: "Ethereum", value: "ethereum" },
+                        { name: "Base", value: "base" },
+                        { name: "BSC", value: "bsc" }
+                    ]
+                }
+            ]);
+            rawChain = chainAnswer.chain;
+        }
     }
     // Safe chain normalization
     const chainKey = String(rawChain ?? "ethereum").toLowerCase();
@@ -83,7 +114,7 @@ async function main() {
         console.error(chalk.red("Error: Contract address is required"));
         process.exit(1);
     }
-    console.log(""); // Add spacing before scan results
+    console.log("");
     // Run scanner
     try {
         await scanEvmContract(contractAddress, chainKey);
