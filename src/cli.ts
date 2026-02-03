@@ -3,7 +3,6 @@
 import { scanEvmContract } from "./engine/evm.js";
 import { getSupportedChains } from "./config/chains.js";
 import chalk from "chalk";
-import inquirer from "inquirer";
 
 // ASCII Banner
 function printBanner() {
@@ -29,7 +28,7 @@ async function main() {
 
   // Show help
   if (args.includes("--help") || args.includes("-h")) {
-    console.log("Usage: ctrlz [contractAddress] [--chain <chainKey>] [chainKey]");
+    console.log("Usage: ctrlz-cli [contractAddress] [--chain <chainKey>] [chainKey]");
     console.log("");
     console.log("Arguments:");
     console.log("  <contractAddress>  EVM contract address (0x...)");
@@ -39,9 +38,9 @@ async function main() {
     console.log(`                     Supported: ${getSupportedChains().join(", ")}`);
     console.log("");
     console.log("Examples:");
-    console.log("  ctrlz 0x1234... ");
-    console.log("  ctrlz 0x1234... --chain base");
-    console.log("  ctrlz 0x1234... base");
+    console.log("  ctrlz-cli 0x1234... ");
+    console.log("  ctrlz-cli 0x1234... --chain base");
+    console.log("  ctrlz-cli 0x1234... base");
     process.exit(0);
   }
 
@@ -77,38 +76,11 @@ async function main() {
     }
   }
 
-  // Interactive prompts if not provided via CLI
+  // Validate required arguments
   if (!contractAddress) {
-    const addressAnswer = await inquirer.prompt([
-      {
-        type: "input",
-        name: "address",
-        message: "Enter contract address:",
-        validate: (input: string) => {
-          if (!input || !input.startsWith("0x")) {
-            return "Please enter a valid contract address starting with 0x";
-          }
-          return true;
-        }
-      }
-    ]);
-    contractAddress = addressAnswer.address;
-  }
-
-  if (!rawChain) {
-    const chainAnswer = await inquirer.prompt([
-      {
-        type: "list",
-        name: "chain",
-        message: "Select blockchain:",
-        choices: [
-          { name: "Ethereum", value: "ethereum" },
-          { name: "Base", value: "base" },
-          { name: "BSC", value: "bsc" }
-        ]
-      }
-    ]);
-    rawChain = chainAnswer.chain;
+    console.error(chalk.red("Error: Contract address is required"));
+    console.error(chalk.gray("Usage: ctrlz-cli <contract-address> [--chain <chainKey>]"));
+    process.exit(1);
   }
 
   // Safe chain normalization

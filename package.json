@@ -1,6 +1,6 @@
 {
   "name": "ctrlz-cli",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "description": "EVM On-Chain Risk Scanner CLI",
   "type": "module",
   "bin": {
