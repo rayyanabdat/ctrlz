@@ -1,13 +1,13 @@
 {
-  "name": "ctrlz",
-  "version": "0.2.3",
-  "description": "EVM Risk Scanner CLI",
+  "name": "ctrlz-cli",
+  "version": "0.1.0",
+  "description": "EVM On-Chain Risk Scanner CLI",
   "type": "module",
   "bin": {
-    "ctrlz": "./dist/cli.js"
+    "ctrlz": "dist/cli.js"
   },
+  "files": ["dist"],
   "scripts": {
-    "dev": "npx tsx src/cli.ts",
     "build": "tsc",
     "start": "node dist/cli.js"
   },
@@ -17,7 +17,6 @@
   },
   "devDependencies": {
     "@types/node": "^20.10.6",
-    "typescript": "^5.3.3",
-    "tsx": "^4.6.2"
+    "typescript": "^5.3.3"
   }
 }
