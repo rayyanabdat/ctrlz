@@ -103,9 +103,6 @@ export async function analyzeLiquidity(client, tokenAddress, chainKey) {
     }
     const quoteTokens = [chainConfig.wrappedNative, ...chainConfig.stablecoins];
     const factories = DEX_FACTORIES[chainKey] || {};
-    // ============================================================
-    // SCAN ALL DEXES
-    // ============================================================
     for (const [dexKey, dexConfig] of Object.entries(factories)) {
         // V2 scanning
         if (dexConfig.v2) {
@@ -153,9 +150,6 @@ export async function analyzeLiquidity(client, tokenAddress, chainKey) {
             result.found = true;
         }
     }
-    // ============================================================
-    // SELECT PRIMARY POOL (prefer V2 with highest verifiable depth)
-    // ============================================================
     if (result.pools.length > 0) {
         // Sort: V2 with verifiable depth first, then by estimated USD
         const sorted = [...result.pools].sort((a, b) => {
@@ -189,9 +183,6 @@ export async function analyzeLiquidity(client, tokenAddress, chainKey) {
             result.evidence.push(...pool.evidence);
         }
     }
-    // ============================================================
-    // LP PROTECTION CHECK (V2 only)
-    // ============================================================
     if (result.primaryPool && result.primaryPool.version === "v2") {
         const protection = await checkLpProtection(client, result.primaryPool.pairAddress, chainKey);
         result.isBurned = protection.isBurned;
@@ -218,18 +209,12 @@ export async function analyzeLiquidity(client, tokenAddress, chainKey) {
         result.facts.push("V4 liquidity: Amount is NOT VERIFIABLE");
         result.evidence.push("V4 uses singleton PoolManager - liquidity depth cannot be reliably determined");
     }
-    // ============================================================
-    // DEPTH REPORTING
-    // ============================================================
     if (result.depthVerifiable && result.totalDepthUsd !== null) {
         result.facts.push(`Estimated total liquidity depth: $${result.totalDepthUsd.toLocaleString()}`);
     }
     else if (result.found) {
         result.facts.push("Liquidity depth: UNVERIFIABLE (V3/V4 or no stablecoin pair)");
     }
-    // ============================================================
-    // RISK BREAKDOWN CALCULATION
-    // ============================================================
     result.riskBreakdown = calculateLiquidityRisks(result);
     if (!result.found) {
         result.facts.push(`No liquidity detected (${result.totalPairsChecked} pairs checked)`);
@@ -238,9 +223,6 @@ export async function analyzeLiquidity(client, tokenAddress, chainKey) {
     return result;
 }
 function calculateLiquidityRisks(result) {
-    // ============================================================
-    // LP CONTROL RISK
-    // ============================================================
     let controlRisk;
     if (!result.found) {
         controlRisk = "HIGH";
@@ -259,13 +241,6 @@ function calculateLiquidityRisks(result) {
         // V2 without burn/lock → HIGH (LP can be rugged)
         controlRisk = "HIGH";
     }
-    // ============================================================
-    // LP DEPTH RISK
-    // Rules:
-    // - If total liquidity < $1,000 → HIGH
-    // - If liquidity exists but < $10,000 → MEDIUM
-    // - Burned LP does NOT override depth risk
-    // ============================================================
     let depthRisk;
     if (!result.found) {
         depthRisk = "HIGH";
@@ -283,9 +258,6 @@ function calculateLiquidityRisks(result) {
     else {
         depthRisk = "LOW";
     }
-    // ============================================================
-    // LP VERIFIABILITY RISK
-    // ============================================================
     let verifiabilityRisk;
     if (!result.found) {
         verifiabilityRisk = "HIGH";

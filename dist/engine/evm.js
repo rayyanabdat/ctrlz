@@ -8,14 +8,6 @@ import { getTokenIdentity } from "./identity.js";
 import { analyzeContext } from "./context.js";
 import { DEX_COVERAGE, CHAIN_IDENTIFIERS } from "../config/constants.js";
 import chalk from "chalk";
-// ============================================================
-// EVM RISK SCANNER - PRODUCTION IMPLEMENTATION
-// ============================================================
-// - Evidence links for every factual claim
-// - Quantified liquidity analysis
-// - Hard-coded scoring guardrails
-// - No default value collapse
-// ============================================================
 const IMPLEMENTATION_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 function getExplorerUrl(chainKey) {
     const explorers = {
