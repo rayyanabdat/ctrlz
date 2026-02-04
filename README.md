@@ -16,10 +16,10 @@ Instantly analyze smart contract risk across multiple chains with comprehensive 
 Execute risk analysis with zero setup:
 
 ```bash
-npx ctrlz-cli <contract-address>
+npx ctrlz-cli
 ```
 
-**Real-world examples:**
+**Or:**
 ```bash
 npx ctrlz-cli 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
 npx ctrlz-cli 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 --chain base
@@ -31,12 +31,6 @@ npx ctrlz-cli 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 --chain base
 - **Portable output** — Plain text reports safe to share
 
 ---
-
-## 📋 Usage
-
-```bash
-ctrlz-cli <contract-address> [--chain <chainKey>]
-```
 
 ### Parameters
 
