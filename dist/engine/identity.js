@@ -4,7 +4,7 @@ const SELECTORS = {
     symbol: "0x95d89b41",
     decimals: "0x313ce567"
 };
-export async function getTokenIdentity(client, tokenAddress) {
+export async function getTokenIdentity(client, tokenAddress, rpcUrl) {
     const result = {
         name: null,
         symbol: null,
@@ -12,18 +12,59 @@ export async function getTokenIdentity(client, tokenAddress) {
         isNonStandard: false,
         hasCode: false
     };
-    // First check if contract has code
-    try {
-        const code = await client.getCode({ address: tokenAddress });
-        result.hasCode = code !== undefined && code !== "0x" && code.length > 2;
+    // First check if contract has code - try direct RPC call first as it's more reliable
+    if (rpcUrl) {
+        try {
+            const response = await fetch(rpcUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'eth_getCode',
+                    params: [tokenAddress, 'latest']
+                })
+            });
+            const data = await response.json();
+            if (data.result !== undefined) {
+                result.hasCode = data.result !== '0x' && data.result.length > 2;
+                if (result.hasCode) {
+                    return await fetchTokenProperties(client, tokenAddress, result);
+                }
+            }
+        }
+        catch (err) {
+            // Fall through to viem client
+        }
     }
-    catch {
-        result.hasCode = false;
+    // Fallback to viem client with retry logic
+    let retries = 3;
+    let lastError = null;
+    while (retries > 0) {
+        try {
+            const code = await client.getCode({
+                address: tokenAddress,
+                blockTag: 'latest'
+            });
+            result.hasCode = code !== undefined && code !== "0x" && code.length > 2;
+            lastError = null;
+            break;
+        }
+        catch (err) {
+            lastError = err instanceof Error ? err : new Error(String(err));
+            retries--;
+            if (retries > 0) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+        }
     }
     if (!result.hasCode) {
         result.isNonStandard = true;
         return result;
     }
+    return await fetchTokenProperties(client, tokenAddress, result);
+}
+async function fetchTokenProperties(client, tokenAddress, result) {
     // Get name
     result.name = await fetchStringProperty(client, tokenAddress, SELECTORS.name);
     // Get symbol

@@ -4,7 +4,7 @@ import { getSupportedChains } from "./config/chains.js";
 import chalk from "chalk";
 // ASCII Banner
 function printBanner() {
-    console.log(chalk.cyan(`
+    console.log(chalk.blue(`
    █████████   █████              ████              ███████████
   ███░░░░░███ ░░███              ░░███      ███    ░█░░░░░░███ 
  ███     ░░░  ███████   ████████  ░███     ░███    ░     ███░  
@@ -14,8 +14,8 @@ function printBanner() {
  ░░█████████   ░░█████  █████     █████    ░░░      ███████████
   ░░░░░░░░░     ░░░░░  ░░░░░     ░░░░░             ░░░░░░░░░░░ 
   `));
-    console.log(chalk.gray("Ctrl+Z — On-chain Risk Scanner"));
-    console.log(chalk.gray("Made with passion by gogetrekt"));
+    console.log(chalk.blue.bold("Ctrl+Z — On-chain Risk Scanner"));
+    console.log(chalk.blue("Made with passion by gogetrekt"));
     console.log("");
 }
 async function main() {
@@ -23,23 +23,23 @@ async function main() {
     const args = process.argv.slice(2);
     // Show help
     if (args.includes("--help") || args.includes("-h")) {
-        console.log("Usage: ctrlz-cli [contractAddress] [--chain <chainKey>]");
+        console.log(chalk.white("Usage: ") + chalk.cyan("ctrlz-cli [contractAddress] [--chain <chainKey>]"));
         console.log("");
-        console.log("Modes:");
-        console.log("  Interactive    Run without arguments to enter interactive mode");
-        console.log("  One-shot       Provide contract address for immediate scan");
+        console.log(chalk.yellow("Modes:"));
+        console.log(chalk.white("  Interactive    Run without arguments to enter interactive mode"));
+        console.log(chalk.white("  One-shot       Provide contract address for immediate scan"));
         console.log("");
-        console.log("Arguments:");
-        console.log("  <contractAddress>  EVM contract address (0x...)");
+        console.log(chalk.yellow("Arguments:"));
+        console.log(chalk.white("  <contractAddress>  EVM contract address (0x...)"));
         console.log("");
-        console.log("Options:");
-        console.log(`  --chain <key>      Chain key (default: ethereum)`);
-        console.log(`                     Supported: ${getSupportedChains().join(", ")}`);
+        console.log(chalk.yellow("Options:"));
+        console.log(chalk.white(`  --chain <key>      Chain key (default: ethereum)`));
+        console.log(chalk.gray(`                     Supported: ${getSupportedChains().join(", ")}`));
         console.log("");
-        console.log("Examples:");
-        console.log("  ctrlz-cli                          # Interactive mode");
-        console.log("  ctrlz-cli 0x1234...                # One-shot scan");
-        console.log("  ctrlz-cli 0x1234... --chain base   # One-shot with chain");
+        console.log(chalk.yellow("Examples:"));
+        console.log(chalk.gray("  ctrlz-cli                          # Interactive mode"));
+        console.log(chalk.gray("  ctrlz-cli 0x1234...                # One-shot scan"));
+        console.log(chalk.gray("  ctrlz-cli 0x1234... --chain base   # One-shot with chain"));
         process.exit(0);
     }
     // Parse CLI arguments
@@ -75,10 +75,10 @@ async function main() {
             {
                 type: "input",
                 name: "address",
-                message: "Enter contract address:",
+                message: chalk.cyan("Enter contract address:"),
                 validate: (input) => {
                     if (!input || !input.startsWith("0x")) {
-                        return "Please enter a valid contract address starting with 0x";
+                        return chalk.red("Please enter a valid contract address starting with 0x");
                     }
                     return true;
                 }
@@ -90,11 +90,11 @@ async function main() {
                 {
                     type: "list",
                     name: "chain",
-                    message: "Select blockchain:",
+                    message: chalk.cyan("Select blockchain:"),
                     choices: [
-                        { name: "Ethereum", value: "ethereum" },
-                        { name: "Base", value: "base" },
-                        { name: "BSC", value: "bsc" }
+                        { name: chalk.white("Ethereum"), value: "ethereum" },
+                        { name: chalk.white("Base"), value: "base" },
+                        { name: chalk.white("BSC"), value: "bsc" }
                     ]
                 }
             ]);

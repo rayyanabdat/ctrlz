@@ -17,7 +17,8 @@ const SELECTORS = {
 
 export async function getTokenIdentity(
   client: PublicClient,
-  tokenAddress: string
+  tokenAddress: string,
+  rpcUrl?: string
 ): Promise<TokenIdentity> {
   const result: TokenIdentity = {
     name: null,
@@ -27,18 +28,67 @@ export async function getTokenIdentity(
     hasCode: false
   };
 
-  // First check if contract has code
-  try {
-    const code = await client.getCode({ address: tokenAddress as `0x${string}` });
-    result.hasCode = code !== undefined && code !== "0x" && code.length > 2;
-  } catch {
-    result.hasCode = false;
+  // First check if contract has code - try direct RPC call first as it's more reliable
+  if (rpcUrl) {
+    try {
+      const response = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'eth_getCode',
+          params: [tokenAddress, 'latest']
+        })
+      });
+      
+      const data = await response.json() as { result?: string; error?: { message: string } };
+      if (data.result !== undefined) {
+        result.hasCode = data.result !== '0x' && data.result.length > 2;
+        if (result.hasCode) {
+          return await fetchTokenProperties(client, tokenAddress, result);
+        }
+      }
+    } catch (err) {
+      // Fall through to viem client
+    }
+  }
+
+  // Fallback to viem client with retry logic
+  let retries = 3;
+  let lastError: Error | null = null;
+  
+  while (retries > 0) {
+    try {
+      const code = await client.getCode({ 
+        address: tokenAddress as `0x${string}`,
+        blockTag: 'latest'
+      });
+      result.hasCode = code !== undefined && code !== "0x" && code.length > 2;
+      lastError = null;
+      break;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      retries--;
+      if (retries > 0) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
   }
 
   if (!result.hasCode) {
     result.isNonStandard = true;
     return result;
   }
+
+  return await fetchTokenProperties(client, tokenAddress, result);
+}
+
+async function fetchTokenProperties(
+  client: PublicClient,
+  tokenAddress: string,
+  result: TokenIdentity
+): Promise<TokenIdentity> {
 
   // Get name
   result.name = await fetchStringProperty(client, tokenAddress, SELECTORS.name);

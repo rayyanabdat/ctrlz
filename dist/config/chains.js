@@ -11,7 +11,18 @@ export const CHAINS = {
         key: "ethereum",
         name: "Ethereum",
         chainId: 1,
-        rpcUrl: resolveRpc("ETH_RPC", "https://eth.llamarpc.com", "https://eth.public.nanopool.org"),
+        rpcUrl: resolveRpc("ETH_RPC", "https://mainnet.infura.io/v3/3c7ff243cb5d4c7c998042a9d7bda05f", "https://eth.llamarpc.com"),
+        rpcUrls: [
+            "https://eth.llamarpc.com",
+            "https://eth.public.nanopool.org",
+            "https://eth.drpc.org"
+        ],
+        rpcPool: [
+            { url: "https://mainnet.infura.io/v3/3c7ff243cb5d4c7c998042a9d7bda05f", tier: "tier1", timeout: 3000, label: "Infura" },
+            { url: "https://eth.llamarpc.com", tier: "tier2", timeout: 4000, label: "LlamaRPC" },
+            { url: "https://eth.public.nanopool.org", tier: "tier2", timeout: 5000, label: "Nanopool" },
+            { url: "https://eth.drpc.org", tier: "tier3", timeout: 8000, label: "dRPC Archive" }
+        ],
         wrappedNative: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
         stablecoins: [
             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
@@ -23,7 +34,18 @@ export const CHAINS = {
         key: "base",
         name: "Base",
         chainId: 8453,
-        rpcUrl: resolveRpc("BASE_RPC", "https://base.llamarpc.com", "https://mainnet.base.org"),
+        rpcUrl: resolveRpc("BASE_RPC", "https://base-mainnet.infura.io/v3/3c7ff243cb5d4c7c998042a9d7bda05f", "https://base.llamarpc.com"),
+        rpcUrls: [
+            "https://base.llamarpc.com",
+            "https://mainnet.base.org",
+            "https://base.drpc.org"
+        ],
+        rpcPool: [
+            { url: "https://base-mainnet.infura.io/v3/3c7ff243cb5d4c7c998042a9d7bda05f", tier: "tier1", timeout: 3000, label: "Infura" },
+            { url: "https://base.llamarpc.com", tier: "tier2", timeout: 4000, label: "LlamaRPC" },
+            { url: "https://mainnet.base.org", tier: "tier2", timeout: 5000, label: "Base Official" },
+            { url: "https://base.drpc.org", tier: "tier3", timeout: 8000, label: "dRPC" }
+        ],
         wrappedNative: "0x4200000000000000000000000000000000000006",
         stablecoins: [
             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC
@@ -34,7 +56,18 @@ export const CHAINS = {
         key: "bsc",
         name: "BSC",
         chainId: 56,
-        rpcUrl: resolveRpc("BSC_RPC", "https://bsc.llamarpc.com", "https://bsc-dataseed1.binance.org"),
+        rpcUrl: resolveRpc("BSC_RPC", "https://bsc-mainnet.infura.io/v3/3c7ff243cb5d4c7c998042a9d7bda05f", "https://bsc.llamarpc.com"),
+        rpcUrls: [
+            "https://bsc.llamarpc.com",
+            "https://bsc-dataseed1.binance.org",
+            "https://bsc.drpc.org"
+        ],
+        rpcPool: [
+            { url: "https://bsc-mainnet.infura.io/v3/3c7ff243cb5d4c7c998042a9d7bda05f", tier: "tier1", timeout: 3000, label: "Infura" },
+            { url: "https://bsc.llamarpc.com", tier: "tier2", timeout: 4000, label: "LlamaRPC" },
+            { url: "https://bsc-dataseed1.binance.org", tier: "tier2", timeout: 5000, label: "Binance" },
+            { url: "https://bsc.drpc.org", tier: "tier3", timeout: 8000, label: "dRPC" }
+        ],
         wrappedNative: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
         stablecoins: [
             "0x55d398326f99059fF775485246999027B3197955", // USDT
@@ -51,6 +84,11 @@ export const CHAINS = {
         stablecoins: [
             "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // USDC
             "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", // USDT
+        ],
+        rpcPool: [
+            { url: "https://polygon-mainnet.infura.io/v3", timeout: 3000, tier: "tier1" },
+            { url: "https://polygon.llamarpc.com", timeout: 5000, tier: "tier2" },
+            { url: "https://polygon-rpc.com", timeout: 5000, tier: "tier3" }
         ]
     },
     arbitrum: {
@@ -62,6 +100,11 @@ export const CHAINS = {
         stablecoins: [
             "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", // USDC
             "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", // USDT
+        ],
+        rpcPool: [
+            { url: "https://arbitrum-mainnet.infura.io/v3", timeout: 3000, tier: "tier1" },
+            { url: "https://arbitrum.llamarpc.com", timeout: 5000, tier: "tier2" },
+            { url: "https://arb1.arbitrum.io/rpc", timeout: 5000, tier: "tier3" }
         ]
     },
     optimism: {
@@ -73,6 +116,11 @@ export const CHAINS = {
         stablecoins: [
             "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", // USDC
             "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58", // USDT
+        ],
+        rpcPool: [
+            { url: "https://optimism-mainnet.infura.io/v3", timeout: 3000, tier: "tier1" },
+            { url: "https://optimism.llamarpc.com", timeout: 5000, tier: "tier2" },
+            { url: "https://mainnet.optimism.io", timeout: 5000, tier: "tier3" }
         ]
     },
     avalanche: {
@@ -84,6 +132,10 @@ export const CHAINS = {
         stablecoins: [
             "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", // USDC
             "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7", // USDT
+        ],
+        rpcPool: [
+            { url: "https://avalanche.llamarpc.com", timeout: 5000, tier: "tier2" },
+            { url: "https://api.avax.network/ext/bc/C/rpc", timeout: 5000, tier: "tier3" }
         ]
     },
     fantom: {
@@ -95,6 +147,10 @@ export const CHAINS = {
         stablecoins: [
             "0x04068DA6C83AFCFA0e13ba15A6696662335D5B75", // USDC
             "0x049d68029688eAbF473097a2fC38ef61633A3C7A", // fUSDT
+        ],
+        rpcPool: [
+            { url: "https://rpc.ftm.tools", timeout: 5000, tier: "tier2" },
+            { url: "https://fantom-rpc.publicnode.com", timeout: 5000, tier: "tier3" }
         ]
     },
     blast: {
@@ -105,6 +161,10 @@ export const CHAINS = {
         wrappedNative: "0x4300000000000000000000000000000000000004",
         stablecoins: [
             "0x4300000000000000000000000000000000000003", // USDB
+        ],
+        rpcPool: [
+            { url: "https://rpc.blast.io", timeout: 5000, tier: "tier2" },
+            { url: "https://blast.blockpi.network/v1/rpc/public", timeout: 8000, tier: "tier3" }
         ]
     }
 };

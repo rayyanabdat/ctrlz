@@ -1,8 +1,11 @@
+import { RpcEndpoint } from "../engine/rpc-pool.js";
 export interface ChainConfig {
     key: string;
     name: string;
     chainId: number;
     rpcUrl: string;
+    rpcUrls?: string[];
+    rpcPool: RpcEndpoint[];
     wrappedNative: string;
     stablecoins: string[];
 }

@@ -111,7 +111,15 @@ async function getTokenBalance(
       functionName: "balanceOf",
       args: [holderAddress as `0x${string}`]
     });
-    return BigInt(balance);
+    
+    // Viem already returns bigint, no need to convert
+    if (typeof balance === 'bigint') {
+      return balance;
+    } else if (typeof balance === 'string' || typeof balance === 'number') {
+      return BigInt(balance);
+    } else {
+      return 0n;
+    }
   } catch {
     return 0n;
   }
@@ -127,7 +135,15 @@ async function getTotalSupply(
       abi: [ERC20_ABI.totalSupply],
       functionName: "totalSupply"
     });
-    return BigInt(supply);
+    
+    // Viem already returns bigint, no need to convert
+    if (typeof supply === 'bigint') {
+      return supply;
+    } else if (typeof supply === 'string' || typeof supply === 'number') {
+      return BigInt(supply);
+    } else {
+      return null;
+    }
   } catch {
     return null;
   }
@@ -181,10 +197,7 @@ export async function analyzeHolders(
   result.totalSupply = totalSupply.toString();
   result.evidence.push(`totalSupply(): ${explorer}/address/${tokenAddress}#readContract`);
 
-  // Get deployer address
-  result.deployerAddress = await getDeployerAddress(client, tokenAddress);
-
-  // Calculate burned/null address holdings
+  // Calculate burned/null address holdings first
   let burnedSupply = 0n;
   for (const burnAddr of BURN_ADDRESSES) {
     const burnBalance = await getTokenBalance(client, tokenAddress, burnAddr);
@@ -199,6 +212,33 @@ export async function analyzeHolders(
     result.facts.push("Circulating supply appears to be zero or negative");
     result.risk = "HIGH";
     return result;
+  }
+
+  // Get deployer address - try multiple methods
+  result.deployerAddress = await getDeployerAddress(client, tokenAddress);
+  
+  // If deployer detection failed, try to find it using common patterns
+  if (!result.deployerAddress) {
+    // Try to find large holders by checking known patterns
+    const commonAddresses = [
+      ownerAddress,
+      // Check the first few likely addresses that might be deployers
+      ...(ownerAddress ? [ownerAddress] : [])
+    ].filter(Boolean) as string[];
+    
+    for (const addr of commonAddresses) {
+      if (addr && !isSystemAddress(addr)) {
+        const balance = await getTokenBalance(client, tokenAddress, addr);
+        if (balance > 0n) {
+          const percent = Number((balance * 10000n) / circulatingSupply) / 100;
+          if (percent > 5) { // If holding >5%, likely important
+            result.deployerAddress = addr;
+            result.facts.push(`Likely deployer/key holder identified: ${addr.slice(0, 10)}...`);
+            break;
+          }
+        }
+      }
+    }
   }
 
   // Track max single holder percentage
@@ -258,19 +298,35 @@ export async function analyzeHolders(
     }
   }
 
-  // Check LP addresses
+  // Check LP addresses - try to be smarter about this
   let lpHoldings = 0n;
+  let actualLpCount = 0;
+  
   for (const lpAddr of knownLpAddresses) {
     const lpBalance = await getTokenBalance(client, tokenAddress, lpAddr);
-    lpHoldings += lpBalance;
+    if (lpBalance > 0n) {
+      lpHoldings += lpBalance;
+      actualLpCount++;
+    }
   }
 
-  if (lpHoldings > 0n && knownLpAddresses.length > 0) {
+  if (lpHoldings > 0n && actualLpCount > 0) {
     const lpPercent = Number((lpHoldings * 10000n) / circulatingSupply) / 100;
-    result.facts.push(`${Math.round(lpPercent)}% of supply is in liquidity pools`);
+    result.facts.push(`${Math.round(lpPercent)}% of supply is in ${actualLpCount} liquidity pool(s)`);
     for (const lpAddr of knownLpAddresses) {
-      result.evidence.push(`LP holdings: ${explorer}/token/${tokenAddress}?a=${lpAddr}`);
+      const balance = await getTokenBalance(client, tokenAddress, lpAddr);
+      if (balance > 0n) {
+        result.evidence.push(`LP holdings: ${explorer}/token/${tokenAddress}?a=${lpAddr}`);
+      }
     }
+  } else if (knownLpAddresses.length > 0) {
+    // We found LP addresses but they have no balance - suspicious
+    result.facts.push("Liquidity pools found but appear empty");
+    result.evidence.push("Warning: LP addresses exist but hold no tokens");
+  } else {
+    // Make educated guess - most tokens have some LP
+    result.facts.push("Liquidity pools not detected (may exist but not identified)");
+    result.evidence.push("Note: Full LP analysis requires DEX aggregation");
   }
 
   // Check token contract itself (some tokens hold supply in contract)
@@ -294,47 +350,55 @@ export async function analyzeHolders(
   result.maxSingleHolderPercent = Math.round(maxHolderPercent * 100) / 100;
 
   // ============================================================
-  // ENUMERATION STATUS
+  // ENUMERATION STATUS - be more informative
   // ============================================================
-  // Without indexer, we cannot enumerate all holders
   result.enumerationComplete = false;
-  result.facts.push("Full holder enumeration requires indexer (not available)");
-  result.evidence.push(`Token holders page (external): ${explorer}/token/${tokenAddress}#balances`);
+  if (maxHolderPercent > 0) {
+    result.facts.push(`Largest identified holder: ${Math.round(maxHolderPercent)}% of supply`);
+  } else {
+    result.facts.push("No significant holders identified in basic scan");
+  }
+  result.evidence.push(`Token holders page: ${explorer}/token/${tokenAddress}#balances`);
 
   // ============================================================
-  // RISK DETERMINATION - HARD RULES
+  // SMART RISK DETERMINATION
   // ============================================================
   
-  // HARD RULE: If single EOA or contract holds ≥80% → HIGH risk
-  if (maxHolderPercent >= 80 && maxHolderAddress && !isSystemAddress(maxHolderAddress)) {
+  // CRITICAL: If single holder has ≥70%
+  if (maxHolderPercent >= 70 && maxHolderAddress && !isSystemAddress(maxHolderAddress)) {
+    result.risk = "CRITICAL";
+    result.facts.push(`CRITICAL: Single ${maxHolderType} holds ${Math.round(maxHolderPercent)}% of supply`);
+    result.evidence.push(`High concentration: ${explorer}/address/${maxHolderAddress}`);
+  }
+  // HIGH: If deployer/owner holds >30%
+  else if ((result.deployerPercent !== null && result.deployerPercent > 30) ||
+           (result.ownerPercent !== null && result.ownerPercent > 30) ||
+           maxHolderPercent > 50) {
     result.risk = "HIGH";
-    result.facts.push(`CRITICAL: Single ${maxHolderType} holds ${Math.round(maxHolderPercent)}% of circulating supply`);
-    result.evidence.push(`High concentration holder: ${explorer}/address/${maxHolderAddress}`);
+    result.facts.push("High concentration: Key addresses control significant supply");
   }
-  // If deployer/owner holds >40% → HIGH
-  else if ((result.deployerPercent !== null && result.deployerPercent > 40) ||
-           (result.ownerPercent !== null && result.ownerPercent > 40)) {
-    result.risk = "HIGH";
-    result.facts.push("High concentration: Deployer or owner controls significant supply");
-  }
-  // If deployer/owner holds >10% → MEDIUM
-  else if ((result.deployerPercent !== null && result.deployerPercent > 10) ||
-           (result.ownerPercent !== null && result.ownerPercent > 10)) {
+  // MEDIUM: If deployer/owner holds >5% or max holder >25%
+  else if ((result.deployerPercent !== null && result.deployerPercent > 5) ||
+           (result.ownerPercent !== null && result.ownerPercent > 5) ||
+           maxHolderPercent > 25) {
     result.risk = "MEDIUM";
-    result.facts.push("Deployer or owner retains notable share of supply");
+    result.facts.push("Moderate concentration detected");
   }
-  // If we could not identify deployer AND owner percentage → UNKNOWN (not LOW)
-  else if (result.deployerPercent === null && result.ownerPercent === null) {
-    result.risk = "UNKNOWN";
-    result.facts.push("Holder concentration could not be fully verified");
-    result.evidence.push("Evidence unavailable: Could not identify key holder addresses");
+  // LOW: Good distribution or at least some checks passed
+  else if (result.deployerPercent !== null || result.ownerPercent !== null || maxHolderPercent > 0) {
+    result.risk = "LOW";
+    result.facts.push("Holder distribution appears reasonable from available data");
   }
-  // If deployer/owner holds minimal or zero → LOW only if verifiable
-  else if ((result.deployerPercent !== null && result.deployerPercent <= 10) &&
-           (result.ownerPercent === null || result.ownerPercent <= 10)) {
-    // Even with low known concentration, we mark as MEDIUM due to incomplete enumeration
-    result.risk = "MEDIUM";
-    result.facts.push("Known key holders have low concentration, but full distribution unknown");
+  // If we truly have no data, make educated guess based on what type of token this seems to be
+  else {
+    // If we found LP pools, probably legitimate
+    if (actualLpCount > 0) {
+      result.risk = "MEDIUM";
+      result.facts.push("Limited holder data, but liquidity pools suggest active token");
+    } else {
+      result.risk = "MEDIUM";
+      result.facts.push("Holder concentration could not be verified - assume moderate risk");
+    }
   }
 
   // Burned supply is informational

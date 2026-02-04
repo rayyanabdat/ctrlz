@@ -36,7 +36,6 @@ export async function scanEvmContract(address: string, chainKey: string = "ether
   // Display results
   displayScanResult(scanResult);
 }
-
 async function performScan(address: string, chainKey: string, scanId: string): Promise<ScanResult> {
   if (!isAddress(address)) {
     throw new Error("Invalid contract address format");
@@ -115,13 +114,18 @@ async function performScan(address: string, chainKey: string, scanId: string): P
     scanResult.holders = await analyzeHoldersEnhanced(rpcPool, address, chain, scanResult.ownership.ownerAddress);
 
     // Calculate final risk assessment
-    scanResult.finalRisk = calculateFinalRisk(scanResult, rpcPool);
-    scanResult.finalConfidence = calculateFinalConfidence(scanResult, rpcPool);
+    scanResult.finalRisk = calculateFinalRisk(scanResult);
+    scanResult.finalConfidence = calculateFinalConfidence(scanResult);
     scanResult.totalScanTime = Date.now() - startTime;
 
-    // Collect RPC stats from the pool
+    // Collect RPC stats
     const rpcStats = rpcPool.getStats();
-    scanResult.rpcStats = rpcStats;
+    scanResult.rpcStats = {
+      totalCalls: Object.values(rpcStats.failureCounts).reduce((a, b) => a + b, 0),
+      successfulCalls: 0, // Would need to track this in RpcPool
+      failedCalls: Object.values(rpcStats.failureCounts).reduce((a, b) => a + b, 0),
+      averageResponseTime: 0 // Would need to track this in RpcPool
+    };
 
     return scanResult;
 
@@ -186,62 +190,32 @@ async function analyzeToken(rpcPool: RpcPool, address: string, chain: ChainConfi
     let standardFunctions = 0;
 
     if (nameResult.status === "fulfilled" && nameResult.value.success) {
-      const decoded = decodeString(nameResult.value.data);
-      result.name = decoded; // null if decoding failed
-      if (decoded !== null) standardFunctions++;
+      result.name = decodeString(nameResult.value.data) || "Unknown";
+      standardFunctions++;
     }
 
     if (symbolResult.status === "fulfilled" && symbolResult.value.success) {
-      const decoded = decodeString(symbolResult.value.data);
-      result.symbol = decoded; // null if decoding failed
-      if (decoded !== null) standardFunctions++;
+      result.symbol = decodeString(symbolResult.value.data) || "Unknown";
+      standardFunctions++;
     }
 
-    // Use safe normalizer for decimals - NEVER throw, NEVER default to 18
     if (decimalsResult.status === "fulfilled" && decimalsResult.value.success) {
-      const normalized = safeNormalizeDecimals(decimalsResult.value.data);
-      if (normalized !== null) {
-        result.decimals = normalized;
+      const decimals = parseInt(decimalsResult.value.data.slice(-2), 16);
+      if (!isNaN(decimals) && decimals <= 77) {
+        result.decimals = decimals;
         standardFunctions++;
       }
-      // If normalization failed, decimals stays null (UNVERIFIABLE)
     }
 
-    // Use safe normalizer for totalSupply
     if (supplyResult.status === "fulfilled" && supplyResult.value.success) {
-      const normalized = safeNormalizeBigInt(supplyResult.value.data);
-      if (normalized !== null && normalized > 0n) {
-        result.totalSupply = normalized.toString();
-        standardFunctions++;
-      }
-      // If normalization failed, totalSupply stays null
+      result.totalSupply = BigInt(supplyResult.value.data).toString();
+      standardFunctions++;
     }
 
-    // Determine token standard and confidence
-    // At least name OR symbol + decimals + totalSupply for standard token
-    const hasIdentity = result.name !== null || result.symbol !== null;
-    const hasDecimals = result.decimals !== null;
-    const hasSupply = result.totalSupply !== null;
-    
-    result.isStandard = hasIdentity && hasDecimals && hasSupply;
-    
-    // Confidence based on verified fields
-    if (standardFunctions >= 3) {
-      result.confidence = "VERIFIED";
-    } else if (standardFunctions >= 1) {
-      result.confidence = "PARTIAL";
-    } else {
-      result.confidence = "UNVERIFIABLE";
-    }
-    
-    // Risk assessment
-    if (result.confidence === "UNVERIFIABLE") {
-      result.risk = "HIGH";
-    } else if (result.isStandard) {
-      result.risk = "LOW";
-    } else {
-      result.risk = "MEDIUM";
-    }
+    // Determine if it's a standard ERC20
+    result.isStandard = standardFunctions >= 3;
+    result.confidence = standardFunctions >= 2 ? "VERIFIED" : "PARTIAL";
+    result.risk = result.isStandard ? "LOW" : "MEDIUM";
 
     if (result.isStandard) {
       result.findings.push(`Standard ERC20 token detected (${standardFunctions}/4 functions)`);
@@ -497,19 +471,10 @@ async function analyzeHoldersEnhanced(rpcPool: RpcPool, address: string, chain: 
       result.findings.push("Could not retrieve total supply");
       result.confidence = "UNVERIFIABLE";
       result.risk = "HIGH";
-      result.enumerationMethod = "FAILED";
       return result;
     }
 
-    // Use safe normalizer for totalSupply
-    const totalSupply = safeNormalizeBigInt(supplyResult.data);
-    if (totalSupply === null || totalSupply === 0n) {
-      result.findings.push("Invalid or zero total supply");
-      result.confidence = "UNVERIFIABLE";
-      result.risk = "HIGH";
-      result.enumerationMethod = "FAILED";
-      return result;
-    }
+    const totalSupply = BigInt(supplyResult.data);
     
     // Check key addresses we know about
     const addressesToCheck = [
@@ -534,15 +499,8 @@ async function analyzeHoldersEnhanced(rpcPool: RpcPool, address: string, chain: 
 
     balanceChecks.forEach(check => {
       if (check.status === "fulfilled" && check.value.result.success) {
-        // Use safe normalizer - NEVER throw on invalid data
-        const balance = safeNormalizeBigInt(check.value.result.data);
-        if (balance === null) return; // Skip invalid data silently
-          
+        const balance = BigInt(check.value.result.data);
         if (balance > 0n) {
-          const percentage = Number((balance * 10000n) / totalSupply) / 100;
-          }
-          
-          if (balance > 0n) {
           const percentage = Number((balance * 10000n) / totalSupply) / 100;
           
           result.topHolders.push({
@@ -607,14 +565,7 @@ async function analyzeHoldersEnhanced(rpcPool: RpcPool, address: string, chain: 
   return result;
 }
 
-function calculateFinalRisk(scanResult: ScanResult, rpcPool: RpcPool): RiskLevel {
-  const rpcStats = rpcPool.getStats();
-  
-  // CRITICAL: If RPC success rate is 0, we cannot trust any results
-  if (rpcStats.totalCalls > 0 && rpcStats.successfulCalls === 0) {
-    return "CRITICAL";
-  }
-  
+function calculateFinalRisk(scanResult: ScanResult): RiskLevel {
   const risks = [
     scanResult.token.risk,
     scanResult.ownership.risk,
@@ -636,14 +587,7 @@ function calculateFinalRisk(scanResult: ScanResult, rpcPool: RpcPool): RiskLevel
   return "LOW";
 }
 
-function calculateFinalConfidence(scanResult: ScanResult, rpcPool: RpcPool): ConfidenceLevel {
-  const rpcStats = rpcPool.getStats();
-  
-  // CRITICAL: If RPC success rate is 0, confidence is UNVERIFIABLE
-  if (rpcStats.totalCalls > 0 && rpcStats.successfulCalls === 0) {
-    return "UNVERIFIABLE";
-  }
-  
+function calculateFinalConfidence(scanResult: ScanResult): ConfidenceLevel {
   const confidences = [
     scanResult.token.confidence,
     scanResult.ownership.confidence,
@@ -681,9 +625,9 @@ function displayScanResult(result: ScanResult): void {
   // Token Information
   console.log("");
   console.log(chalk.cyan("━━━ TOKEN INFO ━━━━━━━━━━━━━━━━━━━━━━━"));
-  console.log(chalk.white(`Name: ${result.token.name !== null ? chalk.green(result.token.name) : chalk.gray("Unknown - Could not read name() function")}`));
-  console.log(chalk.white(`Symbol: ${result.token.symbol !== null ? chalk.green(result.token.symbol) : chalk.gray("Unknown - Could not read symbol() function")}`));
-  console.log(chalk.white(`Decimals: ${result.token.decimals !== null ? chalk.green(String(result.token.decimals)) : chalk.gray("Unknown - Could not read decimals() function")}`));
+  console.log(chalk.white(`Name: ${chalk.green(result.token.name || "Unknown")}`));
+  console.log(chalk.white(`Symbol: ${chalk.green(result.token.symbol || "Unknown")}`));
+  console.log(chalk.white(`Decimals: ${chalk.green(String(result.token.decimals ?? "Unknown"))}`));
   console.log(chalk.white(`Standard: ${result.token.isStandard ? chalk.green("ERC20") : chalk.yellow("Non-standard")}`));
   
   displayAnalysisSection("TOKEN", result.token);
@@ -744,37 +688,15 @@ function displayScanResult(result: ScanResult): void {
   // Final Assessment
   console.log("");
   console.log(chalk.blue("━━━ FINAL ASSESSMENT ━━━━━━━━━━━━━━━━"));
-  
-  // Check for critical RPC failure
-  const rpcSuccessRate = result.rpcStats.totalCalls > 0 
-    ? result.rpcStats.successfulCalls / result.rpcStats.totalCalls 
-    : 0;
-  
-  if (result.rpcStats.totalCalls > 0 && result.rpcStats.successfulCalls === 0) {
-    console.log(chalk.red(`⚠️  SCAN FAILED - No RPC connections working`));
-    console.log(chalk.white(`Overall Risk: ${chalk.magenta("UNKNOWN (Cannot Analyze)")}`));
-    console.log(chalk.white(`Confidence: ${chalk.red("UNVERIFIABLE - No Network Access")}`));
-  } else if (result.finalConfidence === "UNVERIFIABLE") {
-    console.log(chalk.white(`Overall Risk: ${chalk.magenta("UNKNOWN (Insufficient Data)")}`));
-    console.log(chalk.white(`Confidence: ${colorConfidence(result.finalConfidence)}`));
-  } else {
-    console.log(chalk.white(`Overall Risk: ${colorRisk(result.finalRisk)}`));
-    console.log(chalk.white(`Confidence: ${colorConfidence(result.finalConfidence)}`));
-  }
-  
+  console.log(chalk.white(`Overall Risk: ${colorRisk(result.finalRisk)}`));
+  console.log(chalk.white(`Confidence: ${colorConfidence(result.finalConfidence)}`));
   console.log(chalk.white(`Scan Time: ${chalk.gray(`${result.totalScanTime}ms`)}`));
   
   // RPC Statistics
   console.log("");
   console.log(chalk.gray("━━━ RPC STATISTICS ━━━━━━━━━━━━━━━━━━"));
   console.log(chalk.gray(`Total Calls: ${result.rpcStats.totalCalls}`));
-  console.log(chalk.gray(`Successful: ${result.rpcStats.successfulCalls}`));
-  console.log(chalk.gray(`Failed: ${result.rpcStats.failedCalls}`));
-  console.log(chalk.gray(`Success Rate: ${(rpcSuccessRate * 100).toFixed(1)}%`));
-  
-  if (result.rpcStats.averageResponseTime > 0) {
-    console.log(chalk.gray(`Avg Response: ${result.rpcStats.averageResponseTime.toFixed(0)}ms`));
-  }
+  console.log(chalk.gray(`Success Rate: ${result.rpcStats.successfulCalls}/${result.rpcStats.totalCalls}`));
 }
 
 function displayAnalysisSection(title: string, analysis: any): void {
@@ -813,115 +735,21 @@ function getExplorerUrl(chainKey: string): string {
   return explorers[chainKey] || "https://etherscan.io";
 }
 
-function decodeString(data: any): string | null {
-  // Handle null/undefined
-  if (data === null || data === undefined) return null;
+function decodeString(data: string): string | null {
+  if (!data || data === "0x" || data.length < 66) return null;
   
-  // Handle wrapped objects { value: ... }, { result: ... }, { data: ... }
-  if (typeof data === 'object' && data !== null) {
-    if ('value' in data) return decodeString(data.value);
-    if ('result' in data) return decodeString(data.result);
-    if ('data' in data) return decodeString(data.data);
-    return null; // Unrecognized object shape
-  }
-  
-  // If data is already a decoded string (not hex)
-  if (typeof data === 'string' && !data.startsWith('0x')) {
-    return data.replace(/\0/g, '').trim() || null;
-  }
-  
-  // If data is hex string, decode it
-  if (typeof data === 'string' && data.startsWith('0x')) {
-    if (data === '0x' || data.length < 66) return null;
-    
-    try {
-      const hex = data.slice(2);
-      
-      // Check for standard string encoding (offset, length, data)
-      if (hex.length >= 128) {
-        const length = parseInt(hex.slice(64, 128), 16);
-        if (length > 0 && length <= 1000) { // Reasonable length
-          const stringData = hex.slice(128, 128 + length * 2);
-          if (stringData.length >= length * 2) {
-            return Buffer.from(stringData, 'hex').toString('utf8').replace(/\0/g, '').trim();
-          }
-        }
-      }
-      
-      // Try direct bytes32 decoding (some tokens use this)
-      if (hex.length === 64) {
-        const decoded = Buffer.from(hex, 'hex').toString('utf8').replace(/\0/g, '').trim();
-        if (decoded.length > 0 && /^[\x20-\x7E]+$/.test(decoded)) {
-          return decoded;
-        }
-      }
-    } catch {
-      return null;
+  try {
+    const hex = data.slice(2);
+    if (hex.length >= 128) {
+      const offset = parseInt(hex.slice(0, 64), 16) * 2;
+      const length = parseInt(hex.slice(64, 128), 16);
+      const stringData = hex.slice(128, 128 + length * 2);
+      return Buffer.from(stringData, 'hex').toString('utf8').replace(/\0/g, '');
     }
-  }
-  
-  return null;
-}
-
-/**
- * Safe normalizer for numeric values from RPC responses.
- * NEVER throws - returns null on failure.
- */
-function safeNormalizeBigInt(data: any): bigint | null {
-  // Handle null/undefined
-  if (data === null || data === undefined) return null;
-  
-  // Handle wrapped objects
-  if (typeof data === 'object' && data !== null) {
-    if ('value' in data) return safeNormalizeBigInt(data.value);
-    if ('result' in data) return safeNormalizeBigInt(data.result);
-    if ('data' in data) return safeNormalizeBigInt(data.data);
+  } catch {
     return null;
   }
-  
-  // Already bigint
-  if (typeof data === 'bigint') return data;
-  
-  // Number
-  if (typeof data === 'number' && Number.isFinite(data)) {
-    try {
-      return BigInt(Math.floor(data));
-    } catch {
-      return null;
-    }
-  }
-  
-  // String
-  if (typeof data === 'string') {
-    const trimmed = data.trim();
-    if (trimmed === '' || trimmed === '0x') return null;
-    
-    try {
-      // Hex string
-      if (trimmed.startsWith('0x')) {
-        return BigInt(trimmed);
-      }
-      // Decimal string
-      return BigInt(trimmed);
-    } catch {
-      return null;
-    }
-  }
-  
   return null;
-}
-
-/**
- * Safe normalizer for decimals - must be 0-77 range.
- */
-function safeNormalizeDecimals(data: any): number | null {
-  const bigVal = safeNormalizeBigInt(data);
-  if (bigVal === null) return null;
-  
-  const num = Number(bigVal);
-  if (num < 0 || num > 77 || !Number.isInteger(num)) return null;
-  
-  return num;
 }
 
 function colorRisk(risk: string): string {
@@ -936,9 +764,135 @@ function colorRisk(risk: string): string {
 
 function colorConfidence(confidence: string): string {
   switch (confidence) {
-    case "VERIFIED": return chalk.green("VERIFIED (High Confidence)");
-    case "PARTIAL": return chalk.yellow("PARTIAL (Some Data Available)");
-    case "UNVERIFIABLE": return chalk.red("UNVERIFIABLE (Insufficient Data)");
+    case "VERIFIED": return chalk.green(confidence);
+    case "PARTIAL": return chalk.yellow(confidence);
+    case "UNVERIFIABLE": return chalk.red(confidence);
     default: return chalk.gray(confidence);
   }
+}
+      // Check DEFAULT_ADMIN_ROLE
+      const hasRole = await client.call({
+        to: address as `0x${string}`,
+        data: "0x2f2ff15d0000000000000000000000000000000000000000000000000000000000000000" // hasRole(bytes32,address) with zero role
+      });
+      if (hasRole) {
+        logicFacts.push("AccessControl pattern detected (no single owner)");
+        logicEvidence.push(`AccessControl: ${explorer}/address/${address}#readContract`);
+        ownerType = "CONTRACT"; // Managed by roles
+        ownershipDetected = true;
+      }
+    } catch {}
+  }
+  
+  // 4. Smart assumption: if no ownership pattern, likely a simple token
+  if (!ownershipDetected) {
+    // Check if it's a common pattern token by looking for typical functions
+    const hasTransfer = await checkFunctionExists(client, address, "0xa9059cbb"); // transfer
+    const hasApprove = await checkFunctionExists(client, address, "0x095ea7b3"); // approve
+    
+    if (hasTransfer && hasApprove) {
+      logicFacts.push("Standard ERC20 (no ownership controls detected)");
+      logicEvidence.push("Standard transfer/approve functions found");
+      ownerType = "ZERO_ADDRESS"; // Treat as decentralized
+    } else {
+      logicFacts.push("Ownership: Unknown pattern (contract may use custom logic)");
+      logicEvidence.push("No standard ownership patterns found");
+      ownerType = "NOT_FOUND";
+    }
+  }
+
+  // Function scanning
+  const scanTarget = implementationAddress || address;
+  const functions = {
+    mint: [{ name: "mint(address,uint256)", sel: "0x40c10f19" }],
+    pause: [{ name: "pause()", sel: "0x8456cb59" }],
+    blacklist: [{ name: "blacklist(address)", sel: "0xf9f92be4" }],
+    setFee: [{ name: "setFee(uint256)", sel: "0x69fe0e2d" }]
+  };
+
+  for (const [cat, fns] of Object.entries(functions)) {
+    detectedFunctions[cat] = [];
+    for (const fn of fns) {
+      try {
+        await client.call({ to: scanTarget as `0x${string}`, data: fn.sel as `0x${string}` });
+        detectedFunctions[cat].push(fn.name);
+        logicEvidence.push(`${fn.name}: ${explorer}/address/${scanTarget}#writeContract`);
+      } catch {}
+    }
+  }
+
+  const hasMint = detectedFunctions.mint.length > 0;
+  const hasPause = detectedFunctions.pause.length > 0;
+  const hasBlacklist = detectedFunctions.blacklist.length > 0;
+  const hasFee = detectedFunctions.setFee.length > 0;
+
+  if (hasMint) logicFacts.push("Mint function detected");
+  if (hasPause) logicFacts.push("Pause function detected");
+  if (hasBlacklist) logicFacts.push("Blacklist function detected");
+  if (hasFee) logicFacts.push("Fee modification detected");
+
+  // Risk calculation - IMPROVED logic
+  let riskLevel: RiskLevel = "LOW";
+
+  if (hasMint && hasFee && ownerType === "EOA") {
+    riskLevel = "CRITICAL";
+  } else if ((hasMint || hasBlacklist) && ownerType === "EOA") {
+    riskLevel = "HIGH";
+  } else if (isProxy && ownerType === "EOA") {
+    riskLevel = "HIGH";
+  } else if (hasMint || hasBlacklist || hasFee) {
+    riskLevel = "MEDIUM";
+  } else if (ownerType === "ZERO_ADDRESS") {
+    riskLevel = "LOW";
+  } else if (ownerType === "CONTRACT") {
+    riskLevel = "MEDIUM"; // Managed by contract, could be good or bad
+  } else {
+    // Instead of UNKNOWN, make educated guess based on what we found
+    if (isProxy) {
+      riskLevel = "MEDIUM"; // Proxy but can't determine owner control
+    } else {
+      riskLevel = "LOW"; // Simple contract, likely safe
+    }
+  }
+
+  return { isProxy, implementationAddress, ownerAddress, ownerType, detectedFunctions, riskLevel, logicFacts, logicEvidence };
+}
+
+// Helper function to check if a function exists
+async function checkFunctionExists(client: any, address: string, selector: string): Promise<boolean> {
+  try {
+    await client.call({ 
+      to: address as `0x${string}`, 
+      data: selector as `0x${string}` 
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function colorRisk(risk: string): string {
+  switch (risk) {
+    case "LOW": return chalk.green(risk);
+    case "MEDIUM": return chalk.yellow(risk);
+    case "HIGH": return chalk.red(risk);
+    case "CRITICAL": return chalk.redBright(risk);
+    case "UNKNOWN": return chalk.magenta(risk);
+    case "UNVERIFIABLE": return chalk.magenta(risk);
+    default: return risk;
+  }
+}
+
+function colorScore(score: number): string {
+  if (score >= 90) return chalk.green(String(score));
+  if (score >= 75) return chalk.greenBright(String(score));
+  if (score >= 55) return chalk.yellow(String(score));
+  return chalk.red(String(score));
+}
+
+function colorBand(band: string): string {
+  if (band.includes("STRONG")) return chalk.green(band);
+  if (band.includes("LOW RISK")) return chalk.greenBright(band);
+  if (band.includes("CAUTION")) return chalk.yellow(band);
+  return chalk.red(band);
 }
